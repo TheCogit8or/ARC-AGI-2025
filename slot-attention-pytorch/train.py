@@ -8,7 +8,34 @@ import datetime
 import torch.optim as optim
 import torch
 
+
+import datetime
+
+import random
+
+
+import matplotlib.pyplot as plt
+import numpy as np
+
+
+from torch.utils.data import random_split
+
+
+
+import os
+import json
+import torch
+from torch.utils.data import Dataset, DataLoader
+import torch
+import torch.nn.functional as F
+from torchvision.transforms import Resize, Pad
+
+
+
+
+
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
 
 
 """
@@ -31,9 +58,13 @@ parser.add_argument('--num_epochs', default=1000, type=int, help='number of work
 opt = parser.parse_args()
 
 """
+
+if not os.path.exists('./Models'):
+    os.makedirs('./Models')
+
 class Options:
     def __init__(self):
-        self.model_dir = './tmp/model10.ckpt'
+        self.model_dir = './Models'
         self.seed = 0
         self.batch_size = 16
         self.num_slots = 7
@@ -48,11 +79,7 @@ class Options:
 
 opt = Options()
 
-
-
-
-
-resolution = (128, 128)
+resolution = (64, 64)
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -60,15 +87,23 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
 
+# Define a color map (integer values to RGB colors)
+COLOR_MAP = {
+    0: [0, 0, 0],       # Black
+    1: [255, 0, 0],     # Red
+    2: [0, 255, 0],     # Green
+    3: [0, 0, 255],     # Blue
+    4: [255, 255, 0],   # Yellow
+    5: [255, 0, 255],   # Magenta
+    6: [0, 255, 255],   # Cyan
+    7: [128, 128, 128], # Gray
+    8: [255, 165, 0],   # Orange
+    9: [128, 0, 128],   # Purple
+}
 
 
-import os
-import json
-import torch
-from torch.utils.data import Dataset, DataLoader
-import torch
-import torch.nn.functional as F
-from torchvision.transforms import Resize, Pad
+
+
 
 class JSONImageDataset(Dataset):
     def __init__(self, json_dir, resolution=(128, 128)):
@@ -100,11 +135,11 @@ class JSONImageDataset(Dataset):
 
     def _scale_and_pad(self, tensor):
         """
-        Scales and pads a tensor to the target resolution while preserving aspect ratio.
+        Scales, pads, and converts a tensor to RGB format using the COLOR_MAP.
         Args:
             tensor (torch.Tensor): Input tensor of shape [1, height, width].
         Returns:
-            torch.Tensor: Scaled and padded tensor of shape [1, target_height, target_width].
+            torch.Tensor: Scaled, padded, and RGB-converted tensor of shape [3, target_height, target_width].
         """
         _, height, width = tensor.shape
 
@@ -115,13 +150,25 @@ class JSONImageDataset(Dataset):
         # Resize the tensor using nearest neighbor interpolation
         tensor = F.interpolate(tensor.unsqueeze(0), size=(new_height, new_width), mode='nearest').squeeze(0)
 
+        # Apply COLOR_MAP using torch indexing
+        color_map_tensor = torch.tensor([COLOR_MAP[i] for i in range(len(COLOR_MAP))], dtype=torch.float32) / 255.0
+
+        # Map each pixel value to its RGB color
+        rgb_image = color_map_tensor[tensor.long()]  # Shape: [height, width, 3] or [1, height, width, 3]
+
+        # Remove any extra batch dimension if it exists
+        rgb_image = rgb_image.squeeze(0)  # Ensure shape is [height, width, 3]
+
+        # Rearrange dimensions from [height, width, 3] (HWC) to [3, height, width] (CHW)
+        rgb_image = rgb_image.permute(2, 0, 1)  # Shape: [3, height, width]
+
         # Calculate padding
         pad_h = self.resolution[0] - new_height
         pad_w = self.resolution[1] - new_width
         padding = (0, pad_w, 0, pad_h)  # (left, right, top, bottom)
 
-        # Pad the tensor
-        return F.pad(tensor, padding)
+        # Pad the RGB tensor
+        return F.pad(rgb_image, padding)
 
     def __len__(self):
         return len(self.data)
@@ -132,10 +179,20 @@ class JSONImageDataset(Dataset):
 
 
 # Directory containing the .json files
-json_dir = r"c:\Users\todth\Documents\GitHub\ARC-AGI-2025\ARC-AGI-2\data\training"
+
+#json_dir = r"c:\Users\todth\Documents\GitHub\ARC-AGI-2025\ARC-AGI-2\data\training"
+
+# Find the parent folder "ARC-AGI-2025"
+parent_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+# Construct the dynamic path starting from "ARC-AGI-2025"
+json_dir = os.path.join(parent_folder, "ARC-AGI-2", "data", "training")
+
+print(f"JSON Directory: {json_dir}")
+
+
 
 # Create the dataset and DataLoader
-dataset = JSONImageDataset(json_dir)
+dataset = JSONImageDataset(json_dir, resolution)
 dataloader = DataLoader(dataset, batch_size=16, shuffle=True, num_workers=4)
 
 # Print the total number of images in the dataset
@@ -145,51 +202,35 @@ print(f"Total number of images in the dataset: {len(dataset)}")
 
 
 
-import matplotlib.pyplot as plt
-import numpy as np
-
-# Define a color map (integer values to RGB colors)
-COLOR_MAP = {
-    0: [0, 0, 0],       # Black
-    1: [255, 0, 0],     # Red
-    2: [0, 255, 0],     # Green
-    3: [0, 0, 255],     # Blue
-    4: [255, 255, 0],   # Yellow
-    5: [255, 0, 255],   # Magenta
-    6: [0, 255, 255],   # Cyan
-    7: [128, 128, 128], # Gray
-    8: [255, 165, 0],   # Orange
-    9: [128, 0, 128],   # Purple
-}
 
 def plot_json_image(image, title=""):
     """
     Plots a single JSON image in color.
     
     Args:
-        image (list of lists): 2D array of integers representing the image.
+        image (torch.Tensor or numpy.ndarray): 3D RGB tensor in [3, height, width] format.
         title (str): Title of the plot.
     """
-    # Convert the image to an RGB array
-    height, width = len(image), len(image[0])
-    rgb_image = np.zeros((height, width, 3), dtype=np.uint8)
-    
-    for i in range(height):
-        for j in range(width):
-            rgb_image[i, j] = COLOR_MAP.get(image[i][j], [0, 0, 0])  # Default to black if value not in COLOR_MAP
+    # Convert from [3, height, width] (CHW) to [height, width, 3] (HWC) for plotting
+    if isinstance(image, torch.Tensor):
+        image = image.permute(1, 2, 0).numpy()  # Convert to HWC and numpy array
+    elif isinstance(image, np.ndarray):
+        image = np.transpose(image, (1, 2, 0))  # Convert to HWC if it's a numpy array
+
+    # Ensure the image is in uint8 format for plotting
+    image = (image * 255).astype(np.uint8)
 
     # Plot the image
     plt.figure(figsize=(5, 5))
-    plt.imshow(rgb_image)
+    plt.imshow(image)
     plt.title(title)
     plt.axis("off")
     plt.show()
 
 
-
-# Display a grid
-sample_image = dataset[9].squeeze(0).numpy()  # Remove channel dimension
-plot_json_image(sample_image, title="Sample Image from Dataset")
+# Display a random grid
+sample_image = dataset[random.randint(30, 40)]  # Get a sample from the dataset
+plot_json_image(sample_image, title="Sample from Dataset")
 
 
 
@@ -205,20 +246,38 @@ params = [{'params': model.parameters()}]
 
 
 
-from torch.utils.data import random_split
-
 # Split the dataset into training and validation sets
 train_size = int(0.8 * len(dataset))  # 80% for training
 val_size = len(dataset) - train_size  # 20% for validation
 train_set, val_set = random_split(dataset, [train_size, val_size])
 
+
+
+train_dataloader = DataLoader(train_set, batch_size=opt.batch_size, shuffle=True, num_workers=0)
+val_dataloader = DataLoader(val_set, batch_size=opt.batch_size, shuffle=False, num_workers=0)
+
+
+"""
+
+
 # Create DataLoaders for training and validation
 train_dataloader = DataLoader(train_set, batch_size=opt.batch_size, shuffle=True, num_workers=opt.num_workers)
 val_dataloader = DataLoader(val_set, batch_size=opt.batch_size, shuffle=False, num_workers=opt.num_workers)
-
+"""
 # Print dataset sizes
 print(f"Training set size: {len(train_set)}")
 print(f"Validation set size: {len(val_set)}")
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -249,6 +308,12 @@ for epoch in range(opt.num_epochs):
         loss = criterion(recon_combined, image)
         total_loss += loss.item()
 
+        # Debug during the first batch
+        if epoch == 0 and i == 1:
+            print(f"Image shape: {image.shape}")
+            print(f"Recon_combined shape: {recon_combined.shape}")
+            print(f"Loss: {loss.item()}")
+
         # Backward pass
         optimizer.zero_grad()
         loss.backward()
@@ -275,4 +340,79 @@ for epoch in range(opt.num_epochs):
 
     # Save the model every 10 epochs
     if epoch % 10 == 0:
-        torch.save({'model_state_dict': model.state_dict()}, opt.model_dir)
+        datetime_string = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        torch.save(
+            {'model_state_dict': model.state_dict()},
+            f"{opt.model_dir}/model_{datetime_string}.pth"
+        )
+
+
+
+
+
+
+def visualize_slots(image, recons, masks, epoch):
+    """
+    Visualizes the input image, reconstructed slots, and attention masks.
+    
+    Args:
+        image (torch.Tensor): The input image of shape [batch_size, 3, height, width].
+        recons (torch.Tensor): Reconstructed slots of shape [batch_size, num_slots, 3, height, width].
+        masks (torch.Tensor): Attention masks of shape [batch_size, num_slots, 1, height, width].
+        epoch (int): Current epoch number (for display purposes).
+    """
+    batch_size, num_slots, _, height, width = recons.shape
+
+    # Visualize the first image in the batch
+    input_image = image[0].permute(1, 2, 0).cpu().numpy()  # Convert to HWC format
+    slot_recons = recons[0]  # Shape: [num_slots, 3, height, width]
+    slot_masks = masks[0]  # Shape: [num_slots, 1, height, width]
+
+    # Plot the input image
+    plt.figure(figsize=(15, 5))
+    plt.subplot(1, num_slots + 1, 1)
+    plt.imshow(input_image)
+    plt.title("Input Image")
+    plt.axis("off")
+
+    # Plot each slot's reconstruction and mask
+    for slot_idx in range(num_slots):
+        # Reconstruction
+        recon_image = slot_recons[slot_idx].permute(1, 2, 0).cpu().numpy()  # Convert to HWC
+        plt.subplot(2, num_slots + 1, slot_idx + 2)
+        plt.imshow(recon_image)
+        plt.title(f"Slot {slot_idx} Recon")
+        plt.axis("off")
+
+        # Mask
+        mask_image = slot_masks[slot_idx, 0].cpu().numpy()  # Convert to 2D
+        plt.subplot(2, num_slots + 1, num_slots + slot_idx + 2)
+        plt.imshow(mask_image, cmap="gray")
+        plt.title(f"Slot {slot_idx} Mask")
+        plt.axis("off")
+
+    plt.suptitle(f"Epoch {epoch} - Slot Reconstructions and Masks", fontsize=16)
+    plt.tight_layout()
+    plt.show()
+
+
+
+
+
+
+
+# Example: Add this to your training loop
+if epoch % 10 == 0:  # Visualize every 10 epochs
+    with torch.no_grad():
+        for sample in val_dataloader:
+            image = sample.to(device)
+            _, recons, masks, _ = model(image)
+
+            # Visualize the first batch
+            visualize_slots(image, recons, masks, epoch)
+            break  # Only visualize one batch
+
+
+
+
+# TODO: Turn workers > 0 for multiprocessing if that wasn't causing issues
