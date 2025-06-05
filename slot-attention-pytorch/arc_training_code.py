@@ -11,6 +11,7 @@ from tqdm import tqdm
 import time
 import datetime
 import argparse
+import wandb
 
 # Import our modified model
 from modified_slot_attention import ARCSlotAttentionAutoEncoder
@@ -139,19 +140,14 @@ def visualize_segmentation(model, dataset, num_examples=3):
 def train_arc_slot_attention(args):
     """Main training function"""
     
-    # Hyperparameters
+    # 1. Initialize W&B
+    # anonymous="must" allows logging without an account
+    run = wandb.init(anonymous="must", project="arc-slot-attention")
+    
+    # 2. Copy all hyperparameters from args and W&B config
     config = {
-        'batch_size': args.batch_size,
-        'num_slots': args.num_slots,
-        'num_iterations': 3,
-        'hid_dim': 64,
-        'num_colors': 10,
-        'learning_rate': args.learning_rate,
-        'num_epochs': args.num_epochs,
-        'grid_size': 30,
-        'warmup_steps': 1000,
-        'decay_rate': 0.95,
-        'decay_steps': 5000
+        **vars(args),
+        **run.config,
     }
     
     # Create dataset
@@ -194,6 +190,9 @@ def train_arc_slot_attention(args):
     print("Starting training...")
     start_time = time.time()
     
+    # 3. Log model architecture to W&B
+    wandb.watch(model, log="all", log_freq=100)
+    
     for epoch in range(config['num_epochs']):
         # Training phase
         model.train()
@@ -202,10 +201,11 @@ def train_arc_slot_attention(args):
         for batch_idx, batch in enumerate(tqdm(train_loader, desc=f"Epoch {epoch+1}")):
             # Update learning rate
             step = epoch * len(train_loader) + batch_idx
+            lr = config['learning_rate']
             if step < config['warmup_steps']:
                 lr = config['learning_rate'] * (step / config['warmup_steps'])
             else:
-                lr = config['learning_rate'] * (config['decay_rate'] ** (step / config['decay_steps']))
+                lr = config['learning_rate'] * (config['decay_rate'] ** ((step - config['warmup_steps']) / config['decay_steps']))
             
             for param_group in optimizer.param_groups:
                 param_group['lr'] = lr
@@ -229,6 +229,15 @@ def train_arc_slot_attention(args):
         for key in train_losses:
             train_losses[key] /= len(train_loader)
         
+        # Log training losses to W&B
+        wandb.log({
+            "epoch": epoch,
+            "train_loss": train_losses['total'],
+            "train_recon_loss": train_losses['reconstruction'],
+            "train_sparsity_loss": train_losses['sparsity'],
+            "learning_rate": lr
+        })
+        
         # Validation phase
         model.eval()
         val_losses = {'total': 0, 'reconstruction': 0, 'sparsity': 0}
@@ -247,6 +256,13 @@ def train_arc_slot_attention(args):
         for key in val_losses:
             val_losses[key] /= len(val_loader)
         
+        # Log validation losses to W&B
+        wandb.log({
+            "val_loss": val_losses['total'],
+            "val_recon_loss": val_losses['reconstruction'],
+            "val_sparsity_loss": val_losses['sparsity']
+        })
+        
         # Print progress
         elapsed = time.time() - start_time
         print(f"Epoch {epoch+1}/{config['num_epochs']} - "
@@ -256,13 +272,15 @@ def train_arc_slot_attention(args):
               f"Val Loss: {val_losses['total']:.4f} - "
               f"Time: {datetime.timedelta(seconds=int(elapsed))}")
         
-        # Visualize segmentation every 10 epochs
+        # Visualize segmentation every 10 epochs and log to W&B
         if (epoch + 1) % 10 == 0:
             print("Visualizing segmentation results...")
-            visualize_segmentation(model, val_set, num_examples=3)
+            fig = visualize_segmentation(model, val_set, num_examples=3)
+            wandb.log({"segmentation_examples": fig})
         
-        # Save model every 20 epochs
+        # Save model checkpoint artifact to W&B every 20 epochs
         if (epoch + 1) % 20 == 0:
+            # Save a local checkpoint as well
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
             save_path = f"./models/arc_slot_attention_epoch_{epoch+1}_{timestamp}.pth"
             os.makedirs(os.path.dirname(save_path), exist_ok=True)
@@ -270,13 +288,19 @@ def train_arc_slot_attention(args):
                 'epoch': epoch + 1,
                 'model_state_dict': model.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
-                'config': config,
-                'train_loss': train_losses['total'],
-                'val_loss': val_losses['total']
+                'config': config
             }, save_path)
-            print(f"Model saved to {save_path}")
+            print(f"Local model checkpoint saved to {save_path}")
+
+            # Create and log a W&B artifact
+            artifact = wandb.Artifact(f'arc-model-epoch-{epoch+1}', type='model')
+            artifact.add_file(save_path)
+            run.log_artifact(artifact)
+            print("Model artifact saved to W&B")
     
     print("Training completed!")
+    # Mark the run as finished
+    run.finish()
     return model
 
 def test_segmentation(model_path, dataset_path, num_examples=5):
@@ -330,6 +354,9 @@ if __name__ == "__main__":
                         help="Initial learning rate.")
     parser.add_argument('--num_slots', type=int, default=7,
                         help="Number of slots in the Slot Attention module.")
+    parser.add_argument('--warmup_steps', type=int, default=1000, help="Number of warmup steps for learning rate.")
+    parser.add_argument('--decay_rate', type=float, default=0.5, help="Learning rate decay rate.")
+    parser.add_argument('--decay_steps', type=int, default=100000, help="Learning rate decay steps.")
 
     args = parser.parse_args()
     

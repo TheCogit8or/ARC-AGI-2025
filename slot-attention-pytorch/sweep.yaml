@@ -1,0 +1,50 @@
+# W&B Sweep Configuration
+#
+# This file defines the search space and strategy for hyperparameter optimization.
+# To run this sweep, use the following command:
+#   wandb sweep sweep.yaml
+# Then, on your training machine(s), run the agent:
+#   wandb agent <USERNAME>/<PROJECT_NAME>/<SWEEP_ID>
+#
+# For more information, see: https://docs.wandb.ai/guides/sweeps
+
+program: arc_training_code.py
+method: bayes  # Bayesian optimization is efficient for finding good hyperparameters
+metric:
+  name: val_loss
+  goal: minimize
+
+parameters:
+  # --- Key Hyperparameters to Tune ---
+  
+  learning_rate:
+    distribution: log_uniform_values
+    min: 0.00005
+    max: 0.001
+
+  num_slots:
+    distribution: int_uniform
+    min: 5
+    max: 10
+    
+  batch_size:
+    values: [16, 32, 64]
+
+  # --- Model and Scheduler Hyperparameters ---
+  # These are less critical to tune initially but can be adjusted
+  
+  hid_dim:
+    values: [64, 96, 128]
+
+  num_iterations:
+    values: [2, 3, 4]
+
+  warmup_steps:
+    distribution: int_uniform
+    min: 500
+    max: 2000
+    
+  decay_rate:
+    distribution: uniform
+    min: 0.5
+    max: 0.99 

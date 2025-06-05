@@ -39,6 +39,37 @@ The script will:
 
 The script is the single, recommended entry point for training the model.
 
+## Hyperparameter Tuning with W&B Sweeps
+
+This project is integrated with Weights & Biases (W&B) for automated hyperparameter tuning. The `sweep.yaml` file contains the configuration for a search over key hyperparameters like `learning_rate`, `num_slots`, and `batch_size`.
+
+To find the best hyperparameters for the model, follow these steps:
+
+**1. Log in to W&B**
+
+From your terminal, log in to your W&B account.
+```bash
+wandb login
+```
+
+**2. Initialize the Sweep**
+
+Navigate to the `slot-attention-pytorch` directory and start the sweep. W&B will print a unique SWEEP_ID that you will use in the next step.
+```bash
+cd slot-attention-pytorch
+wandb sweep sweep.yaml
+```
+
+**3. Run the W&B Agent**
+
+On your training machine (e.g., your Thunder Compute instance), run the W&B agent with the SWEEP_ID provided by the previous command. The agent will automatically run the training script with different hyperparameter combinations.
+```bash
+# Replace <USERNAME>/<PROJECT_NAME>/<SWEEP_ID> with the ID from the previous step
+wandb agent <USERNAME>/<PROJECT_NAME>/<SWEEP_ID>
+```
+
+You can now monitor the progress and see all results, plots, and rankings on your W&B dashboard.
+
 ## Citation
 
 ```bibtex
