@@ -68,10 +68,16 @@ class ARCDataset(Dataset):
 
 class ARCLoss(nn.Module):
     """Custom loss function for ARC discrete grids"""
-    def __init__(self, reconstruction_weight=1.0, mask_sparsity_weight=0.1):
+    def __init__(self, reconstruction_weight=1.0, mask_sparsity_weight=0.1, foreground_weight=10.0, num_colors=10):
         super().__init__()
         self.reconstruction_weight = reconstruction_weight
         self.mask_sparsity_weight = mask_sparsity_weight
+        
+        # Create a weight tensor for the loss function
+        # foreground_weight > 1 gives more importance to object pixels
+        class_weights = torch.ones(num_colors)
+        class_weights[1:] = foreground_weight  # Weight for colors 1-9
+        self.register_buffer('class_weights', class_weights)
         
     def forward(self, outputs, target_grid):
         # outputs: dict with 'combined_reconstruction', 'slot_masks', etc.
@@ -86,7 +92,8 @@ class ARCLoss(nn.Module):
         # Reconstruction loss (cross-entropy)
         recon_loss = F.cross_entropy(
             combined_recon.permute(0, 3, 1, 2),  # [batch_size, num_colors, height, width]
-            target_grid
+            target_grid,
+            weight=self.class_weights  # Apply the class weights here
         )
         
         # Mask sparsity loss to encourage slots to specialize
@@ -186,7 +193,12 @@ def train_arc_slot_attention(args):
     ).to(device)
     
     # Create loss function and optimizer
-    criterion = ARCLoss(reconstruction_weight=1.0, mask_sparsity_weight=0.1)
+    criterion = ARCLoss(
+        reconstruction_weight=1.0,
+        mask_sparsity_weight=0.1,
+        foreground_weight=config['foreground_weight'],
+        num_colors=config['num_colors']
+    )
     optimizer = optim.Adam(model.parameters(), lr=config['learning_rate'])
     
     # Training loop
@@ -345,21 +357,42 @@ def test_segmentation(model_path, dataset_path, num_examples=5):
                       f"confidence: {segment['confidence']:.3f}")
 
 if __name__ == "__main__":
-    # --- Manually run the test_segmentation function ---
-    # This section is modified to test a trained model instead of starting a new training run.
+    parser = argparse.ArgumentParser(description="Train ARC Slot Attention Model")
     
-    # 1. Specify the path to the model checkpoint you want to evaluate.
-    #    You can find saved models in the `slot-attention-pytorch/models` directory.
-    model_path = "slot-attention-pytorch/models/arc_slot_attention_epoch_100_20250629_140455.pth"
+    # --- Data and Run Management ---
+    parser.add_argument('--data_dir', type=str, required=True,
+                        help="Path to the directory containing ARC JSON training files.")
+    parser.add_argument('--grid_size', type=int, default=30,
+                        help="The size to pad all grids to (grid_size x grid_size).")
     
-    # 2. Specify the path to the dataset for testing (e.g., the evaluation set).
-    dataset_path = "arc_dataset/data/evaluation"
+    # --- Training Hyperparameters ---
+    parser.add_argument('--num_epochs', type=int, default=100,
+                        help="Number of training epochs.")
+    parser.add_argument('--batch_size', type=int, default=32,
+                        help="Batch size for training.")
+    parser.add_argument('--learning_rate', type=float, default=0.0004,
+                        help="Initial learning rate.")
+    parser.add_argument('--warmup_steps', type=int, default=10000,
+                        help="Number of warmup steps for learning rate.")
+    parser.add_argument('--decay_rate', type=float, default=0.5,
+                        help="Learning rate decay rate.")
+    parser.add_argument('--decay_steps', type=int, default=100000,
+                        help="Learning rate decay steps.")
     
-    print("--- Running Segmentation Test ---")
-    print(f"Loading model: {model_path}")
-    print(f"Using dataset: {dataset_path}")
+    # --- Model Hyperparameters ---
+    parser.add_argument('--num_slots', type=int, default=8,
+                        help="Number of slots in the Slot Attention module.")
+    parser.add_argument('--num_iterations', type=int, default=3,
+                        help="Number of attention iterations.")
+    parser.add_argument('--hid_dim', type=int, default=128,
+                        help="Hidden dimension size in the model.")
+    parser.add_argument('--num_colors', type=int, default=10,
+                        help="Number of possible colors in ARC grids (0-9).")
+    parser.add_argument('--foreground_weight', type=float, default=10.0,
+                        help="Weight for foreground pixels in the loss function.")
+
+
+    args = parser.parse_args()
     
-    # 3. Call the test function.
-    test_segmentation(model_path, dataset_path, num_examples=5)
-    
-    print("--- Test complete ---")
+    # Train the model
+    trained_model = train_arc_slot_attention(args)
