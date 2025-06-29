@@ -226,7 +226,7 @@ def train_arc_slot_attention(args):
         mask_sparsity_weight=0.1,
         foreground_weight=config['foreground_weight'],
         num_colors=config['num_colors']
-    )
+    ).to(device)
     optimizer = optim.Adam(model.parameters(), lr=config['learning_rate'])
     
     # Training loop
