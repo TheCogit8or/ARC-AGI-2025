@@ -64,7 +64,8 @@ python3 $TRAINING_SCRIPT \
     --num_epochs 100 \
     --batch_size 32 \
     --learning_rate 0.0004 \
-    --num_slots 8
+    --num_slots 8 \
+    --grid_size 30
 
 echo "--- Training script finished. ---"
 deactivate

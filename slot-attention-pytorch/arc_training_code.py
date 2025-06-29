@@ -344,19 +344,35 @@ def test_segmentation(model_path, dataset_path, num_examples=5):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train ARC Slot Attention Model")
     
+    # --- Data and Run Management ---
     parser.add_argument('--data_dir', type=str, required=True,
                         help="Path to the directory containing ARC JSON training files.")
-    parser.add_argument('--num_epochs', type=int, default=50,
+    parser.add_argument('--grid_size', type=int, default=30,
+                        help="The size to pad all grids to (grid_size x grid_size).")
+    
+    # --- Training Hyperparameters ---
+    parser.add_argument('--num_epochs', type=int, default=100,
                         help="Number of training epochs.")
-    parser.add_argument('--batch_size', type=int, default=16,
+    parser.add_argument('--batch_size', type=int, default=32,
                         help="Batch size for training.")
     parser.add_argument('--learning_rate', type=float, default=0.0004,
                         help="Initial learning rate.")
-    parser.add_argument('--num_slots', type=int, default=7,
+    parser.add_argument('--warmup_steps', type=int, default=10000,
+                        help="Number of warmup steps for learning rate.")
+    parser.add_argument('--decay_rate', type=float, default=0.5,
+                        help="Learning rate decay rate.")
+    parser.add_argument('--decay_steps', type=int, default=100000,
+                        help="Learning rate decay steps.")
+    
+    # --- Model Hyperparameters ---
+    parser.add_argument('--num_slots', type=int, default=8,
                         help="Number of slots in the Slot Attention module.")
-    parser.add_argument('--warmup_steps', type=int, default=1000, help="Number of warmup steps for learning rate.")
-    parser.add_argument('--decay_rate', type=float, default=0.5, help="Learning rate decay rate.")
-    parser.add_argument('--decay_steps', type=int, default=100000, help="Learning rate decay steps.")
+    parser.add_argument('--num_iterations', type=int, default=3,
+                        help="Number of attention iterations.")
+    parser.add_argument('--hid_dim', type=int, default=128,
+                        help="Hidden dimension size in the model.")
+    parser.add_argument('--num_colors', type=int, default=10,
+                        help="Number of possible colors in ARC grids (0-9).")
 
     args = parser.parse_args()
     
