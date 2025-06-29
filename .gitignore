@@ -11,3 +11,19 @@ slot-attention-pytorch/__pycache__/dataset.cpython-38.pyc
 .env.development
 .env.test
 .env.production
+
+# Python Virtual Environment (pyenv)
+arc_venv/
+
+# W&B logs and artifacts
+wandb/
+
+# Downloaded ARC dataset
+arc_dataset/
+
+# General Python cache
+__pycache__/
+*.pyc
+
+# IDE settings
+.vscode/
