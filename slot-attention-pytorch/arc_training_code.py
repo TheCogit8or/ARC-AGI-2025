@@ -12,9 +12,39 @@ import time
 import datetime
 import argparse
 import wandb
+from matplotlib.colors import ListedColormap
 
 # Import our modified model
 from modified_slot_attention import ARCSlotAttentionAutoEncoder
+
+# --- New ARC Visualization Style ---
+# Define the official ARC color palette for visualization
+ARC_COLOR_MAP = [
+    '#000000',  # 0: black
+    '#0074D9',  # 1: blue
+    '#FF4136',  # 2: red
+    '#2ECC40',  # 3: green
+    '#FFDC00',  # 4: yellow
+    '#AAAAAA',  # 5: grey
+    '#F012BE',  # 6: fuchsia
+    '#FF851B',  # 7: orange
+    '#7FDBFF',  # 8: cyan
+    '#870C25'   # 9: brown
+]
+ARC_CMAP = ListedColormap(ARC_COLOR_MAP)
+
+def draw_arc_grid(ax, grid):
+    """Draws a grid in the ARC style with a fixed colormap and gridlines."""
+    grid_np = grid.cpu().numpy() if hasattr(grid, 'cpu') else np.array(grid)
+    height, width = grid_np.shape
+    ax.imshow(grid_np, cmap=ARC_CMAP, vmin=0, vmax=len(ARC_COLOR_MAP)-1, interpolation='nearest')
+    ax.set_xticks(np.arange(-.5, width, 1), minor=True)
+    ax.set_yticks(np.arange(-.5, height, 1), minor=True)
+    ax.grid(which='minor', color='#555555', linestyle='-', linewidth=1)
+    ax.set_xticks([])
+    ax.set_yticks([])
+
+# --- End New Visualization Style ---
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -109,7 +139,7 @@ class ARCLoss(nn.Module):
             'sparsity_loss': sparsity_loss
         }
 
-def visualize_segmentation(model, dataset, num_examples=3):
+def visualize_segmentation(model, dataset, num_examples=3, save_path="segmentation_results.png"):
     """Visualize the segmentation results"""
     model.eval()
     
@@ -125,27 +155,25 @@ def visualize_segmentation(model, dataset, num_examples=3):
             # Get segmentation
             segments = model.get_individual_segments(sample, threshold=0.1)
             
-            # Plot original
-            axes[i, 0].imshow(sample[0].cpu().numpy(), cmap='tab10', vmin=0, vmax=9)
+            # Plot original using the new drawing function
+            draw_arc_grid(axes[i, 0], sample[0])
             axes[i, 0].set_title('Original')
-            axes[i, 0].axis('off')
             
-            # Plot segments
+            # Plot segments using the new drawing function
             for j, segment in enumerate(segments[0][:7]):  # Up to 7 segments
                 if j < 7:
-                    axes[i, j+1].imshow(segment['grid'].cpu().numpy(), cmap='tab10', vmin=0, vmax=9)
+                    draw_arc_grid(axes[i, j+1], segment['grid'])
                     axes[i, j+1].set_title(f'Slot {j+1}\n(conf: {segment["confidence"]:.2f})')
-                    axes[i, j+1].axis('off')
             
             # Fill remaining slots with empty plots
             for j in range(len(segments[0]), 7):
                 axes[i, j+1].axis('off')
     
     plt.tight_layout()
-    # Save the figure instead of showing it, so we can view it outside the SSH session.
-    plt.savefig("segmentation_results.png")
+    # Save the figure to the specified path instead of a fixed name.
+    plt.savefig(save_path)
     plt.close(fig)
-    print("Segmentation visualization saved to segmentation_results.png")
+    print(f"Segmentation visualization saved to {save_path}")
 
 def train_arc_slot_attention(args):
     """Main training function"""
@@ -337,8 +365,12 @@ def test_segmentation(model_path, dataset_path, num_examples=5):
     # Load test dataset
     test_dataset = ARCDataset(dataset_path, max_size=config['grid_size'])
     
-    # Visualize results
-    visualize_segmentation(model, test_dataset, num_examples=num_examples)
+    # Create a unique, timestamped filename for the results
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    save_path = f"segmentation_{timestamp}.png"
+    
+    # Visualize results, passing the new save path
+    visualize_segmentation(model, test_dataset, num_examples=num_examples, save_path=save_path)
     
     # Extract segments for analysis
     model.eval()
