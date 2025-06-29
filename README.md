@@ -111,6 +111,27 @@ Once a model has been trained, follow these steps to visualize its segmentation 
     scp user@<INSTANCE_IP>:/path/to/your/project/segmentation_...png .
     ```
 
+### Part 4: Cost Management - Stopping Your Instance
+
+**IMPORTANT:** You are billed for the entire time an instance is in the `RUNNING` state, not just when you are actively training. To avoid unnecessary costs, you should stop your instance every time you finish a work session.
+
+All your files and your environment will be preserved and will be available when you restart the instance.
+
+1.  **Stop the Instance:**
+    When you are done working, run this command from your **local machine**.
+    ```bash
+    # On your local machine
+    tnr stop 0
+    ```
+
+2.  **Restart the Instance:**
+    When you are ready to resume your work, simply start the instance again. It will take a minute or two to boot up.
+    ```bash
+    # On your local machine
+    tnr start 0
+    ```
+    Once `tnr status` shows the instance is `RUNNING`, you can reconnect with `tnr connect 0`.
+
 # Citations
 
 
