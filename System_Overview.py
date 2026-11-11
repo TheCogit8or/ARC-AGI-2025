@@ -33,8 +33,8 @@ for task in tasks
 
         for segment_strategy in k_best_seg_strats_for_OUT
             # Get list of segments of the OUT grid using the segmentation strategy
-           OUT_segs_for_strat = get_segments_list(OUT, segment_strategy) # segment_strategy = num_slots, …, etc.
-           list_of_OUT_segs_by_strat_for_curr_example.append(OUT_segs_for_strat) # Append list of segs to list of lists
+            OUT_segs_for_strat = get_segments_list(OUT, segment_strategy) # segment_strategy = num_slots, …, etc.
+            list_of_OUT_segs_by_strat_for_curr_example.append(OUT_segs_for_strat) # Append list of segs to list of lists
 
 
 
@@ -51,7 +51,7 @@ for task in tasks
     # Segment objects/images should also maintain relative positions in overall grid...
 
     # The lists "list_of_<IN/OUT>_segs_by_strat_for_curr_example" are: [example, strat, [segs]]
-    # For each strategy, see which has segments are most consistent across examples
+    # For each strategy, see which has segments that are most consistent across examples
     for strat in list_of_IN_segs_by_strat_by_example
 
 
